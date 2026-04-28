@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>アニメ推薦 - AI 애니 추천</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Zen+Dots&family=Dela+Gothic+One&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #07070f;
+  --surface: rgba(12,12,26,0.85);
+  --border: rgba(255,255,255,0.09);
+  --accent1: #c084fc;
+  --accent2: #67e8f9;
+  --accent3: #fb923c;
+  --text: #f0f0fa;
+  --muted: #8888b0;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:'Noto Sans KR',sans-serif; min-height:100vh; overflow-x:hidden; }
+
+/* BG */
+#bg-layer { position:fixed; inset:0; z-index:0; overflow:hidden; }
+.bg-slide { position:absolute; inset:0; background-size:cover; background-position:center top; opacity:0; transition:opacity 2.5s ease; filter:blur(3px) saturate(1.3) brightness(0.55); transform:scale(1.06); }
+.bg-slide.show { opacity:1; }
+#bg-overlay { position:fixed; inset:0; z-index:1; pointer-events:none;
+  background: linear-gradient(180deg,rgba(7,7,15,.65) 0%,rgba(7,7,15,.15) 35%,rgba(7,7,15,.15) 65%,rgba(7,7,15,.9) 100%),
+              linear-gradient(90deg,rgba(7,7,15,.75) 0%,transparent 22%,transparent 78%,rgba(7,7,15,.75) 100%); }
+#bg-grid { position:fixed; inset:0; z-index:2; pointer-events:none;
+  background-image:linear-gradient(rgba(192,132,252,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(192,132,252,.035) 1px,transparent 1px);
+  background-size:58px 58px; }
+
+/* SIDE PANELS */
+.side-panel { position:fixed; top:0; bottom:0; width:195px; z-index:3; display:flex; flex-direction:column; gap:10px; padding:16px 8px; pointer-events:none; overflow:hidden; }
+#panel-left { left:0; } #panel-right { right:0; }
+.side-card { flex:1; min-height:0; border-radius:18px; overflow:hidden; border:1px solid rgba(255,255,255,.07); box-shadow:0 8px 40px rgba(0,0,0,.6); opacity:0; transition:opacity 1.4s ease; position:relative; background:rgba(255,255,255,.02); }
+.side-card.show { opacity:1; }
+.side-card img { width:100%; height:100%; object-fit:cover; object-position:top center; display:block; }
+.side-card::after { content:''; position:absolute; inset:0; background:linear-gradient(to bottom,transparent 55%,rgba(7,7,15,.85) 100%); }
+@media(max-width:1180px){ .side-panel{ display:none; } }
+
+/* MAIN */
+.container { position:relative; z-index:10; max-width:750px; margin:0 auto; padding:0 22px 100px; }
+header { text-align:center; padding:50px 0 26px; }
+.logo { font-family:'Zen Dots',sans-serif; font-size:clamp(2rem,7vw,4rem); line-height:1;
+  background:linear-gradient(135deg,var(--accent1),var(--accent2) 55%,var(--accent3)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  animation:glow 4s ease-in-out infinite alternate; }
+@keyframes glow { from{filter:drop-shadow(0 0 16px rgba(192,132,252,.5))} to{filter:drop-shadow(0 0 40px rgba(103,232,249,.6))} }
+.logo-sub { font-size:.7rem; color:var(--muted); letter-spacing:.35em; text-transform:uppercase; margin-top:10px; }
+
+/* STEP DOTS */
+.step-bar { display:flex; justify-content:center; align-items:center; gap:9px; margin:20px 0 30px; }
+.dot { width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,.12); transition:all .4s ease; }
+.dot.active { width:26px; border-radius:4px; background:linear-gradient(90deg,var(--accent1),var(--accent2)); box-shadow:0 0 12px rgba(192,132,252,.6); }
+.dot.done { background:var(--accent1); box-shadow:0 0 8px rgba(192,132,252,.4); }
+
+/* SECTIONS */
+.section { display:none; }
+.section.active { display:block; animation:up .4s ease both; }
+@keyframes up { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+
+.glass { background:var(--surface); backdrop-filter:blur(28px); -webkit-backdrop-filter:blur(28px); border:1px solid var(--border); border-radius:26px; padding:28px 24px; box-shadow:0 16px 60px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.05); }
+
+.sec-label { font-size:.7rem; color:var(--accent1); letter-spacing:.3em; text-transform:uppercase; margin-bottom:5px; }
+.sec-head { font-family:'Dela Gothic One',sans-serif; font-size:clamp(1.3rem,4vw,1.85rem); line-height:1.25; margin-bottom:24px; }
+.sec-head span { background:linear-gradient(135deg,var(--accent1),var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+
+/* CHIPS */
+.cg { margin-bottom:18px; }
+.cl { font-size:.7rem; color:var(--muted); letter-spacing:.2em; text-transform:uppercase; margin-bottom:9px; display:flex; align-items:center; gap:8px; }
+.cl::after { content:''; flex:1; height:1px; background:var(--border); }
+.chips { display:flex; flex-wrap:wrap; gap:7px; }
+.chip { padding:8px 14px; border-radius:100px; border:1.5px solid var(--border); background:rgba(255,255,255,.03); color:var(--muted); font-size:.82rem; font-family:'Noto Sans KR',sans-serif; cursor:pointer; transition:all .2s ease; user-select:none; position:relative; overflow:hidden; backdrop-filter:blur(6px); }
+.chip::before { content:''; position:absolute; inset:0; background:linear-gradient(135deg,var(--accent1),var(--accent2)); opacity:0; transition:opacity .2s ease; }
+.chip span { position:relative; z-index:1; }
+.chip:hover { border-color:var(--accent1); color:var(--text); transform:translateY(-2px); box-shadow:0 4px 14px rgba(192,132,252,.2); }
+.chip.sel { border-color:transparent; color:#fff; box-shadow:0 3px 16px rgba(192,132,252,.35); }
+.chip.sel::before { opacity:1; }
+
+.cnt { display:flex; align-items:center; gap:7px; margin-top:14px; font-size:.8rem; color:var(--muted); }
+.badge { background:linear-gradient(135deg,var(--accent1),var(--accent2)); color:#fff; border-radius:100px; padding:2px 9px; font-size:.76rem; font-weight:700; min-width:24px; text-align:center; }
+
+/* BUTTONS */
+.btn-p { display:inline-flex; align-items:center; gap:8px; margin-top:24px; padding:13px 34px; border-radius:100px; border:none; background:linear-gradient(135deg,var(--accent1),var(--accent2)); color:#fff; font-size:.9rem; font-family:'Dela Gothic One',sans-serif; cursor:pointer; transition:all .3s ease; box-shadow:0 4px 22px rgba(192,132,252,.4); }
+.btn-p:hover { transform:translateY(-3px); box-shadow:0 8px 30px rgba(192,132,252,.55); }
+.btn-p:disabled { opacity:.3; cursor:not-allowed; transform:none; box-shadow:none; }
+.btn-s { display:inline-flex; align-items:center; gap:6px; margin-top:12px; margin-right:10px; padding:9px 18px; border-radius:100px; border:1.5px solid var(--border); background:transparent; color:var(--muted); font-size:.8rem; font-family:'Noto Sans KR',sans-serif; cursor:pointer; transition:all .2s ease; }
+.btn-s:hover { border-color:var(--accent1); color:var(--text); }
+
+/* LOADING */
+#loading { display:none; }
+#loading.active { display:block; animation:up .4s ease both; }
+.load-glass { background:var(--surface); backdrop-filter:blur(28px); -webkit-backdrop-filter:blur(28px); border:1px solid var(--border); border-radius:26px; padding:52px 32px; text-align:center; box-shadow:0 16px 60px rgba(0,0,0,.45); }
+.orb-wrap { position:relative; width:70px; height:70px; margin:0 auto 22px; }
+.orb { width:70px; height:70px; border-radius:50%; background:linear-gradient(135deg,var(--accent1),var(--accent2)); animation:op 1.3s ease-in-out infinite; box-shadow:0 0 36px rgba(192,132,252,.55); }
+.orb-ring { position:absolute; inset:-10px; border-radius:50%; border:2px solid rgba(192,132,252,.3); animation:re 1.3s ease-out infinite; }
+@keyframes op { 0%,100%{transform:scale(1)} 50%{transform:scale(1.12)} }
+@keyframes re  { 0%{transform:scale(.85);opacity:1} 100%{transform:scale(1.65);opacity:0} }
+.load-title { font-family:'Dela Gothic One',sans-serif; font-size:1.1rem; margin-bottom:8px; }
+.load-msg { font-size:.82rem; color:var(--muted); min-height:1.2em; animation:blink 1.3s ease-in-out infinite alternate; }
+@keyframes blink { from{opacity:.35} to{opacity:1} }
+.load-bar { width:180px; height:3px; background:var(--border); border-radius:4px; margin:18px auto 0; overflow:hidden; }
+.load-fill { height:100%; background:linear-gradient(90deg,var(--accent1),var(--accent2)); border-radius:4px; animation:bar 1.8s ease-in-out infinite; }
+@keyframes bar { 0%{width:0;margin-left:0} 50%{width:70%;margin-left:0} 100%{width:0;margin-left:100%} }
+
+/* RESULTS */
+.res-head { background:var(--surface); backdrop-filter:blur(28px); -webkit-backdrop-filter:blur(28px); border:1px solid var(--border); border-radius:26px; padding:24px 22px 18px; text-align:center; margin-bottom:18px; box-shadow:0 12px 50px rgba(0,0,0,.4); }
+.sum-chips { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin-top:12px; }
+.sum-chip { padding:3px 11px; border-radius:100px; font-size:.72rem; background:rgba(192,132,252,.12); border:1px solid rgba(192,132,252,.22); color:var(--accent1); }
+
+.grid { display:grid; gap:14px; }
+.card { background:var(--surface); backdrop-filter:blur(28px); -webkit-backdrop-filter:blur(28px); border:1px solid var(--border); border-radius:20px; padding:20px 20px 16px; position:relative; overflow:hidden; transition:all .3s ease; box-shadow:0 6px 28px rgba(0,0,0,.35); animation:ci .45s ease both; }
+.card:nth-child(1){animation-delay:.04s}.card:nth-child(2){animation-delay:.1s}.card:nth-child(3){animation-delay:.16s}.card:nth-child(4){animation-delay:.22s}.card:nth-child(5){animation-delay:.28s}
+@keyframes ci { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
+.card::before { content:''; position:absolute; top:0;left:0;right:0; height:2px; background:linear-gradient(90deg,var(--accent1),var(--accent2),var(--accent3)); opacity:0; transition:opacity .3s; }
+.card:hover { transform:translateY(-4px); border-color:rgba(192,132,252,.25); box-shadow:0 14px 44px rgba(192,132,252,.14); }
+.card:hover::before { opacity:1; }
+.rank { position:absolute; top:16px; right:16px; font-family:'Zen Dots',sans-serif; font-size:2rem; color:rgba(255,255,255,.05); line-height:1; user-select:none; }
+.ct { font-family:'Dela Gothic One',sans-serif; font-size:1.1rem; color:var(--text); margin-bottom:2px; padding-right:50px; }
+.cj { font-size:.78rem; color:var(--muted); margin-bottom:10px; font-style:italic; }
+.tags { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:10px; }
+.tag { padding:2px 9px; border-radius:100px; font-size:.68rem; font-weight:500; }
+.tag.g { background:rgba(192,132,252,.14); color:var(--accent1); border:1px solid rgba(192,132,252,.22); }
+.tag.i { background:rgba(103,232,249,.09); color:var(--accent2); border:1px solid rgba(103,232,249,.18); }
+.desc { font-size:.84rem; color:var(--muted); line-height:1.7; }
+.reason { font-size:.78rem; color:var(--accent2); margin-top:9px; padding-top:9px; border-top:1px solid var(--border); }
+.bar-wrap { display:flex; align-items:center; gap:8px; margin-top:12px; font-size:.76rem; color:var(--muted); }
+.mbar { flex:1; height:3px; background:rgba(255,255,255,.07); border-radius:4px; overflow:hidden; }
+.mfill { height:100%; background:linear-gradient(90deg,var(--accent1),var(--accent2)); border-radius:4px; width:0%; transition:width 1.1s cubic-bezier(.4,0,.2,1) .25s; }
+.mpct { font-family:'Zen Dots',sans-serif; color:var(--accent2); font-size:.8rem; }
+
+.btn-retry { display:inline-flex; align-items:center; gap:7px; margin-top:24px; padding:12px 26px; border-radius:100px; border:1.5px solid var(--border); background:var(--surface); backdrop-filter:blur(12px); color:var(--text); font-size:.86rem; font-family:'Dela Gothic One',sans-serif; cursor:pointer; transition:all .3s ease; }
+.btn-retry:hover { border-color:var(--accent1); box-shadow:0 0 22px rgba(192,132,252,.22); transform:translateY(-2px); }
+.err { background:rgba(251,146,60,.1); border:1px solid rgba(251,146,60,.28); border-radius:14px; padding:16px; color:var(--accent3); font-size:.83rem; margin-top:14px; line-height:1.6; }
+</style>
+</head>
+<body>
+
+<div id="bg-layer">
+  <div class="bg-slide" id="slide-a"></div>
+  <div class="bg-slide" id="slide-b"></div>
+</div>
+<div id="bg-overlay"></div>
+<div id="bg-grid"></div>
+
+<div class="side-panel" id="panel-left">
+  <div class="side-card" id="sL1"><img id="imgL1" src="" alt=""></div>
+  <div class="side-card" id="sL2"><img id="imgL2" src="" alt=""></div>
+</div>
+<div class="side-panel" id="panel-right">
+  <div class="side-card" id="sR1"><img id="imgR1" src="" alt=""></div>
+  <div class="side-card" id="sR2"><img id="imgR2" src="" alt=""></div>
+</div>
+
+<div class="container">
+  <header>
+    <div class="logo">アニメ推薦</div>
+    <div class="logo-sub">AI 애니 추천 시스템</div>
+  </header>
+
+  <div class="step-bar">
+    <div class="dot active" id="d1"></div>
+    <div class="dot" id="d2"></div>
+    <div class="dot" id="d3"></div>
+  </div>
+
+  <!-- STEP 1 -->
+  <div class="section active" id="step1">
+    <div class="glass">
+      <div class="sec-label">STEP 01</div>
+      <div class="sec-head">어떤 <span>장르</span>를 좋아하나요?</div>
+      <div class="cg">
+        <div class="cl">장르</div>
+        <div class="chips">
+          <div class="chip" data-g="genre"><span>⚔️ 액션</span></div>
+          <div class="chip" data-g="genre"><span>💘 로맨스</span></div>
+          <div class="chip" data-g="genre"><span>😂 개그/코미디</span></div>
+          <div class="chip" data-g="genre"><span>🔍 미스터리</span></div>
+          <div class="chip" data-g="genre"><span>👻 공포/호러</span></div>
+          <div class="chip" data-g="genre"><span>🔮 판타지</span></div>
+          <div class="chip" data-g="genre"><span>🚀 SF</span></div>
+          <div class="chip" data-g="genre"><span>🌸 일상/힐링</span></div>
+          <div class="chip" data-g="genre"><span>🏫 학원물</span></div>
+          <div class="chip" data-g="genre"><span>🎮 이세계</span></div>
+          <div class="chip" data-g="genre"><span>🏆 스포츠</span></div>
+          <div class="chip" data-g="genre"><span>🎭 드라마</span></div>
+        </div>
+      </div>
+      <div class="cg">
+        <div class="cl">분위기</div>
+        <div class="chips">
+          <div class="chip" data-g="mood"><span>🌑 다크/어두운</span></div>
+          <div class="chip" data-g="mood"><span>☀️ 밝고 유쾌한</span></div>
+          <div class="chip" data-g="mood"><span>😢 감동적·눈물</span></div>
+          <div class="chip" data-g="mood"><span>🤯 충격·반전</span></div>
+          <div class="chip" data-g="mood"><span>🧘 잔잔·힐링</span></div>
+          <div class="chip" data-g="mood"><span>⚡ 긴장감 넘치는</span></div>
+        </div>
+      </div>
+      <div class="cnt">선택: <span class="badge" id="cnt1">0</span></div>
+      <button class="btn-p" id="n1" onclick="goStep(2)" disabled>다음 단계 →</button>
+    </div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div class="section" id="step2">
+    <div class="glass">
+      <div class="sec-label">STEP 02</div>
+      <div class="sec-head">더 자세한 <span>취향</span>을 골라주세요</div>
+      <div class="cg">
+        <div class="cl">주인공 스타일</div>
+        <div class="chips">
+          <div class="chip" data-g="hero"><span>💪 노력형</span></div>
+          <div class="chip" data-g="hero"><span>🧠 천재형</span></div>
+          <div class="chip" data-g="hero"><span>😈 안티히어로</span></div>
+          <div class="chip" data-g="hero"><span>🙈 평범한 주인공</span></div>
+          <div class="chip" data-g="hero"><span>👑 무적 주인공</span></div>
+          <div class="chip" data-g="hero"><span>🐣 성장형</span></div>
+        </div>
+      </div>
+      <div class="cg">
+        <div class="cl">선호 요소</div>
+        <div class="chips">
+          <div class="chip" data-g="el"><span>🗡️ 치열한 전투</span></div>
+          <div class="chip" data-g="el"><span>💞 달달한 로맨스</span></div>
+          <div class="chip" data-g="el"><span>🧩 복잡한 스토리</span></div>
+          <div class="chip" data-g="el"><span>🌍 방대한 세계관</span></div>
+          <div class="chip" data-g="el"><span>👥 우정·팀워크</span></div>
+          <div class="chip" data-g="el"><span>🎵 OST가 좋은</span></div>
+          <div class="chip" data-g="el"><span>🎨 작화가 아름다운</span></div>
+          <div class="chip" data-g="el"><span>😂 개그 요소</span></div>
+        </div>
+      </div>
+      <div class="cg">
+        <div class="cl">시청 스타일</div>
+        <div class="chips">
+          <div class="chip" data-g="watch"><span>🆕 애니 입문자</span></div>
+          <div class="chip" data-g="watch"><span>🎯 단편·완결작</span></div>
+          <div class="chip" data-g="watch"><span>📺 장편·시리즈</span></div>
+          <div class="chip" data-g="watch"><span>🌙 야심한 밤에</span></div>
+          <div class="chip" data-g="watch"><span>🍿 가볍게 보기</span></div>
+        </div>
+      </div>
+      <div class="cnt">선택: <span class="badge" id="cnt2">0</span></div>
+      <div>
+        <button class="btn-s" onclick="goStep(1)">← 이전</button>
+        <button class="btn-p" id="n2" onclick="recommend()" disabled>✨ AI 추천 받기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOADING -->
+  <div id="loading">
+    <div class="load-glass">
+      <div class="orb-wrap"><div class="orb"></div><div class="orb-ring"></div></div>
+      <div class="load-title">AI가 취향을 분석 중이에요</div>
+      <div class="load-msg" id="lmsg">키워드 분석 중...</div>
+      <div class="load-bar"><div class="load-fill"></div></div>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="section" id="step3">
+    <div class="res-head">
+      <div class="sec-label">RESULT</div>
+      <div class="sec-head">당신을 위한 <span>추천 애니</span></div>
+      <div class="sum-chips" id="schips"></div>
+    </div>
+    <div class="grid" id="rgrid"></div>
+    <div style="text-align:center">
+      <button class="btn-retry" onclick="reset()">🔄 다시 추천받기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── BG SLIDESHOW ── */
+const BGS = [
+  'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=1600&q=80',
+  'https://images.unsplash.com/photo-1536098561742-ca998e48cbcc?w=1600&q=80',
+  'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=1600&q=80',
+  'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=1600&q=80',
+  'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=1600&q=80',
+];
+let bgSlot='a', bgI=0;
+async function nextBg(){
+  const ns=bgSlot==='a'?'b':'a', url=BGS[bgI%BGS.length]; bgI++;
+  const el=document.getElementById('slide-'+ns);
+  el.style.backgroundImage=`url(${url})`;
+  el.classList.add('show');
+  setTimeout(()=>{ document.getElementById('slide-'+bgSlot).classList.remove('show'); bgSlot=ns; },2600);
+}
+nextBg(); setInterval(nextBg,9000);
+
+/* ── SIDE CHARS ── */
+async function loadChar(ep,imgId,cardId){
+  try {
+    const r=await fetch(ep), d=await r.json();
+    if(!d.url) return;
+    const img=document.getElementById(imgId);
+    img.onload=()=>document.getElementById(cardId).classList.add('show');
+    img.onerror=()=>document.getElementById(cardId).style.display='none';
+    img.src=d.url;
+  } catch { document.getElementById(cardId).style.display='none'; }
+}
+async function loadChars(){
+  ['sL1','sL2','sR1','sR2'].forEach(id=>document.getElementById(id).classList.remove('show'));
+  await new Promise(r=>setTimeout(r,400));
+  const eps=['https://api.waifu.pics/sfw/waifu','https://api.waifu.pics/sfw/neko','https://api.waifu.pics/sfw/shinobu','https://api.waifu.pics/sfw/megumin'].sort(()=>Math.random()-.5);
+  loadChar(eps[0],'imgL1','sL1');
+  setTimeout(()=>loadChar(eps[1],'imgL2','sL2'),300);
+  setTimeout(()=>loadChar(eps[2],'imgR1','sR1'),600);
+  setTimeout(()=>loadChar(eps[3],'imgR2','sR2'),900);
+}
+loadChars(); setInterval(loadChars,25000);
+
+/* ── CHIPS ── */
+const sel={};
+document.querySelectorAll('.chip').forEach(c=>{
+  c.addEventListener('click',()=>{
+    c.classList.toggle('sel');
+    const g=c.dataset.g, t=c.querySelector('span').innerText.trim();
+    if(!sel[g]) sel[g]=new Set();
+    c.classList.contains('sel')?sel[g].add(t):sel[g].delete(t);
+    updateCnt();
+  });
+});
+function updateCnt(){
+  const c1=['genre','mood'].reduce((s,g)=>s+(sel[g]?.size||0),0);
+  const c2=['hero','el','watch'].reduce((s,g)=>s+(sel[g]?.size||0),0);
+  document.getElementById('cnt1').textContent=c1;
+  document.getElementById('cnt2').textContent=c2;
+  document.getElementById('n1').disabled=c1===0;
+  document.getElementById('n2').disabled=c2===0;
+}
+
+/* ── NAV ── */
+let cur=1;
+function goStep(n){
+  document.getElementById(`step${cur}`)?.classList.remove('active');
+  document.getElementById('loading').classList.remove('active');
+  cur=n;
+  document.getElementById(`step${n}`)?.classList.add('active');
+  for(let i=1;i<=3;i++){const d=document.getElementById('d'+i);d.className='dot'+(i<n?' done':i===n?' active':'');}
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+/* ── RECOMMEND ── */
+const LMSGS=['키워드 분석 중...','최적의 애니 탐색 중...','추천 목록 정리 중...','마지막 검토 중...'];
+let lint;
+
+function getKW(){
+  const all=[];
+  for(const s of Object.values(sel)) s.forEach(v=>all.push(v));
+  return all;
+}
+
+async function recommend(){
+  const kw=getKW(); if(!kw.length) return;
+  document.getElementById('step2').classList.remove('active');
+  document.getElementById('loading').classList.add('active');
+  for(let i=1;i<=3;i++){const d=document.getElementById('d'+i);d.className='dot'+(i<3?' done':' active');}
+
+  let mi=0;
+  document.getElementById('lmsg').textContent=LMSGS[0];
+  lint=setInterval(()=>{ mi=(mi+1)%LMSGS.length; document.getElementById('lmsg').textContent=LMSGS[mi]; },1600);
+
+  const prompt=`너는 애니메이션 추천 전문가야. 사용자 취향 키워드: ${kw.join(', ')}
+
+아래 JSON 형식으로만 답해. 다른 텍스트 절대 없이:
+{"recommendations":[{"title":"한국어제목","titleJp":"일본어원제","year":"연도","episodes":"화수","genres":["장르"],"matchScore":90,"description":"2문장 소개","matchReason":"이 취향에 맞는 이유 한 줄"}]}
+
+5편 추천. matchScore는 75~98 정수. 실제 존재하는 유명 애니만.`;
+
+  try {
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:900,
+        messages:[{role:'user',content:prompt}]
+      })
+    });
+    clearInterval(lint);
+    const data=await res.json();
+    if(data.error) throw new Error(data.error.message||'API error');
+    const raw=(data.content||[]).map(b=>b.text||'').join('');
+    // Extract JSON even if there's extra text
+    const match=raw.match(/\{[\s\S]*\}/);
+    if(!match) throw new Error('JSON 파싱 실패');
+    const parsed=JSON.parse(match[0]);
+    document.getElementById('loading').classList.remove('active');
+    showResults(parsed.recommendations,kw);
+    document.getElementById('step3').classList.add('active');
+    loadChars();
+  } catch(e){
+    clearInterval(lint);
+    document.getElementById('loading').classList.remove('active');
+    document.getElementById('step2').classList.add('active');
+    for(let i=1;i<=3;i++){const d=document.getElementById('d'+i);d.className='dot'+(i<2?' done':i===2?' active':'');}
+    let eb=document.getElementById('aerr');
+    if(!eb){eb=document.createElement('div');eb.id='aerr';eb.className='err';document.querySelector('#step2 .glass').appendChild(eb);}
+    eb.textContent='오류: '+e.message;
+  }
+}
+
+function showResults(list,kw){
+  document.getElementById('schips').innerHTML=kw.map(k=>`<div class="sum-chip">${k}</div>`).join('');
+  document.getElementById('rgrid').innerHTML=list.map((a,i)=>`
+    <div class="card">
+      <div class="rank">0${i+1}</div>
+      <div class="ct">${a.title||''}</div>
+      ${a.titleJp?`<div class="cj">${a.titleJp}</div>`:''}
+      <div class="tags">
+        ${(a.genres||[]).map(g=>`<span class="tag g">${g}</span>`).join('')}
+        ${a.year?`<span class="tag i">📅 ${a.year}</span>`:''}
+        ${a.episodes?`<span class="tag i">🎬 ${a.episodes}화</span>`:''}
+      </div>
+      <div class="desc">${a.description||''}</div>
+      ${a.matchReason?`<div class="reason">💡 ${a.matchReason}</div>`:''}
+      <div class="bar-wrap">
+        <span>일치도</span>
+        <div class="mbar"><div class="mfill" data-p="${a.matchScore||80}"></div></div>
+        <span class="mpct">${a.matchScore||80}%</span>
+      </div>
+    </div>
+  `).join('');
+  setTimeout(()=>document.querySelectorAll('.mfill').forEach(el=>el.style.width=el.dataset.p+'%'),80);
+}
+
+function reset(){
+  Object.keys(sel).forEach(k=>sel[k]=new Set());
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('sel'));
+  document.getElementById('step3').classList.remove('active');
+  document.getElementById('aerr')?.remove();
+  updateCnt();
+  goStep(1);
+  loadChars();
+}
+</script>
+</body>
+</html>
